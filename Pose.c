@@ -112,7 +112,7 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[4][4],
 
     real R[4][4] = {};
     _Mvl3(_Mst(_Mpt(R, 0,0, 3,3), = ,*g_noise));
-    R[3][3] = predict_directed_w_noise[0][0];
+    R[3][3] = directed_w_noise;
     // R
 
     real HP[4][10];
