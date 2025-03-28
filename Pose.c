@@ -13,13 +13,12 @@ static void make_omg(real coe, real w[3], real (*omg)[4][4])
     })));
 }
 
-static void make_O(real coe, real q[4], real (*O)[4][3])
+static void make_O(real coe, real q[4], real (*O)[3][3])
 {
-    _Mvl3(_Mst(*O, = coe*,((real[4][3]){
+    _Mvl3(_Mst(*O, = coe*,((real[3][3]){
         {-q[1], -q[2], -q[3]},
         {q[0], -q[3], q[2]},
-        {q[3], q[0], -q[1]},
-        {-q[2], q[1], q[0]}
+        {q[3], q[0], -q[1]}
     })));
 }
 
@@ -32,16 +31,16 @@ static void make_predict_norm_g(real q[4], real (*predict_norm_g)[3][1])
     })));
 }
 
-static void make_G(real coe, real q[4], real (*G)[3][4])
+static void make_G(real coe, real q[4], real (*G)[3][3])
 {
-    _Mvl3(_Mst(*G, = coe*,((real[3][4]){
-        {-q[2], q[3], -q[0], q[1]},
-        {q[1], q[0], q[3], q[2]},
-        {q[0], -q[1], -q[2], q[3]}
+    _Mvl3(_Mst(*G, = coe*,((real[3][3]){
+        {-q[2], q[3], -q[0]},
+        {q[1], q[0], q[3]},
+        {q[0], -q[1], -q[2]}
     })));
 }
 
-void Pose_Update(real (*q_)[4], real (*q_noise)[4][4],
+void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
                  real (*w_bias_)[3], real (*w_bias_noise)[3][3], const real (*w_bias_progress_noise)[3][3],
                  const real (*g_)[3], const real (*g_noise)[3][3],
                  const real (*w_)[3], const real (*w_noise)[3][3],
@@ -64,24 +63,24 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[4][4],
     _Mvl9(_Mst(*q, += ,_Mgt(omg $ *q)));
     // x = f(x)
 
-    real O[4][3];
+    real O[3][3];
     make_O(half_dt, *q_, &O);
     
-    real F[10][10] = {};
+    real F[9][9] = {};
     _Mvl3(_Mgr(F, +1));
-    _Mvl3(_Mst(_Mpt(F, 0,0, 4,4), += ,omg));
-    _Mvl3(_Mst(_Mpt(F, 0,4, 4,3), += ,O));
-    _Mvl3(_Mst(_Mpt(F, 0,7, 4,3), -= ,O));
+    _Mvl3(_Mst(_Mpt(F, 0,0, 3,3), += ,_Mpt(omg, 0,0, 3,3)));
+    _Mvl3(_Mst(_Mpt(F, 0,3, 3,3), += ,O));
+    _Mvl3(_Mst(_Mpt(F, 0,6, 3,3), -= ,O));
     // F
     
-    real P[10][10] = {};
-    _Mvl3(_Mst(_Mpt(P, 0,0, 4,4), = ,*q_noise));
-    _Mvl3(_Mst(_Mpt(P, 4,4, 3,3), = ,*w_noise));
-    _Mvl3(_Mst(_Mpt(P, 7,7, 3,3), = ,*w_bias_noise));
+    real P[9][9] = {};
+    _Mvl3(_Mst(_Mpt(P, 0,0, 3,3), = ,*q_noise));
+    _Mvl3(_Mst(_Mpt(P, 3,3, 3,3), = ,*w_noise));
+    _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), = ,*w_bias_noise));
     // P
 
     _Mvl9(_Mst(P, = ,F $ _Mgt(P $T F)));
-    _Mvl3(_Mst(_Mpt(P, 7,7, 3,3), += dt*,*w_bias_progress_noise));
+    _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), += dt*,*w_bias_progress_noise));
     // P = FPF^T + noise;
 
     real predict_norm_g[3][1];
@@ -101,34 +100,34 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[4][4],
     e[3][0] = directed_w - predict_directed_w[0][0];
     // e = z - h(x)
 
-    real G[3][4];
+    real G[3][3];
     make_G(2, *q_, &G);
     
-    real H[4][10] = {};
-    _Mvl3(_Mst(_Mpt(H, 0,0, 3,4), = ,G));
-    _Mvl3(_Mst(_Mpt(H, 3,4, 1,3), = ,*direction $T$));
-    _Mvl3(_Mst(_Mpt(H, 3,7, 1,3), = -,*direction $T$));
+    real H[4][9] = {};
+    _Mvl3(_Mst(_Mpt(H, 0,0, 3,3), = ,G));
+    _Mvl3(_Mst(_Mpt(H, 3,3, 1,3), = ,*direction $T$));
+    _Mvl3(_Mst(_Mpt(H, 3,6, 1,3), = -,*direction $T$));
     // H
 
     real R[4][4] = {};
-    _Mvl3(_Mst(_Mpt(R, 0,0, 3,3), = ,*g_noise));
+    _Mvl3(_Mst(_Mpt(R, 0,0, 3,3), = inv_g2*,*g_noise));
     R[3][3] = directed_w_noise;
     // R
 
-    real HP[4][10];
+    real HP[4][9];
     _Mvl3(_Mst(HP, = ,H $ P));
     
-    real K[10][4];
+    real K[9][4];
     _Mvl9(_Mdv(_Mst(K, = ,HP $T$) $I _Mgt(HP $T H, + ,R)));
     // K = PH^T / (HPH^T + R) = (HP)^T / (HPH^T + R)
 
     _Mvl3(_Mst(_Mpt(*q, 0,0, 3,1), += ,_Mpt(K, 0,0, 3,4) $ e));
-    _Mvl3(_Mst(*w_bias, += ,_Mpt(K, 7,0, 3,4) $ e));
+    _Mvl3(_Mst(*w_bias, += ,_Mpt(K, 6,0, 3,4) $ e));
     // x += K(z - h(x))
 
     _Mvl9(_Mst(P, -= ,K $ HP));
-    _Mvl3(_Mst(*q_noise, = ,_Mpt(P, 0,0, 4,4)));
-    _Mvl3(_Mst(*w_bias_noise, = ,_Mpt(P, 7,7, 3,3)));
+    _Mvl9(_Mst(*q_noise, = 0.5*,_Mpt(P, 0,0, 3,3), + 0.5*,_Mpt(P, 0,0, 3,3) $T$));
+    _Mvl9(_Mst(*w_bias_noise, = 0.5*,_Mpt(P, 6,6, 3,3), + 0.5*,_Mpt(P, 6,6, 3,3) $T$));
     // P -= KHP
 
     real q2[1][1];
