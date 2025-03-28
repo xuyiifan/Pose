@@ -40,8 +40,9 @@ static void make_G(real coe, real q[4], real (*G)[3][3])
     })));
 }
 
-void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
-                 real (*w_bias_)[3], real (*w_bias_noise)[3][3], const real (*w_bias_progress_noise)[3][3],
+void Pose_Update(real (*q_)[4],
+                 real (*w_bias_)[3], const real (*w_bias_progress_noise)[3][3],
+                 real (*q_and_w_bias_noise)[6][6],
                  const real (*g_)[3], const real (*g_noise)[3][3],
                  const real (*w_)[3], const real (*w_noise)[3][3],
                  real directed_w, real directed_w_noise, const real (*direction_)[3],
@@ -53,9 +54,8 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
     const real (*w)[3][1] = (typeof(w))w_;
     const real (*direction)[3][1] = (typeof(direction))direction_;
 
-    real unbiased_w[3][1], unbiased_w_noise[3][3];
+    real unbiased_w[3][1];
     _Mvl3(_Mst(unbiased_w, = ,*w, - ,*w_bias));
-    _Mvl3(_Mst(unbiased_w_noise, = ,*w_noise, + ,*w_bias_noise));
 
     real omg[4][4], half_dt = dt / 2;
     make_omg(half_dt, (real*)unbiased_w, &omg);
@@ -69,26 +69,24 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
     real F[9][9] = {};
     _Mvl3(_Mgr(F, +1));
     _Mvl3(_Mst(_Mpt(F, 0,0, 3,3), += ,_Mpt(omg, 0,0, 3,3)));
-    _Mvl3(_Mst(_Mpt(F, 0,3, 3,3), += ,O));
-    _Mvl3(_Mst(_Mpt(F, 0,6, 3,3), -= ,O));
+    _Mvl3(_Mst(_Mpt(F, 0,3, 3,3), -= ,O));
+    _Mvl3(_Mst(_Mpt(F, 0,6, 3,3), += ,O));
     // F
     
     real P[9][9] = {};
-    _Mvl3(_Mst(_Mpt(P, 0,0, 3,3), = ,*q_noise));
-    _Mvl3(_Mst(_Mpt(P, 3,3, 3,3), = ,*w_noise));
-    _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), = ,*w_bias_noise));
+    _Mvl3(_Mst(_Mpt(P, 0,0, 6,6), = ,*q_and_w_bias_noise));
+    _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), = ,*w_noise));
     // P
 
     _Mvl9(_Mst(P, = ,F $ _Mgt(P $T F)));
-    _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), += dt*,*w_bias_progress_noise));
+    _Mvl3(_Mst(_Mpt(P, 3,3, 3,3), += dt*,*w_bias_progress_noise));
     // P = FPF^T + noise;
 
     real predict_norm_g[3][1];
     make_predict_norm_g(*q_, &predict_norm_g);
 
-    real predict_directed_w[1][1], predict_directed_w_noise[1][1];
+    real predict_directed_w[1][1];
     _Mvl3(_Mst(predict_directed_w, = ,*direction T$ unbiased_w));
-    _Mvl9(_Mst(predict_directed_w_noise, = ,*direction T$ _Mgt(unbiased_w_noise $ *direction)));
     // h(x)
 
     real g2[1][1];
@@ -105,8 +103,8 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
     
     real H[4][9] = {};
     _Mvl3(_Mst(_Mpt(H, 0,0, 3,3), = ,G));
-    _Mvl3(_Mst(_Mpt(H, 3,3, 1,3), = ,*direction $T$));
-    _Mvl3(_Mst(_Mpt(H, 3,6, 1,3), = -,*direction $T$));
+    _Mvl3(_Mst(_Mpt(H, 3,3, 1,3), = -,*direction $T$));
+    _Mvl3(_Mst(_Mpt(H, 3,6, 1,3), = ,*direction $T$));
     // H
 
     real R[4][4] = {};
@@ -122,17 +120,18 @@ void Pose_Update(real (*q_)[4], real (*q_noise)[3][3],
     // K = PH^T / (HPH^T + R) = (HP)^T / (HPH^T + R)
 
     _Mvl3(_Mst(_Mpt(*q, 0,0, 3,1), += ,_Mpt(K, 0,0, 3,4) $ e));
-    _Mvl3(_Mst(*w_bias, += ,_Mpt(K, 6,0, 3,4) $ e));
+    _Mvl3(_Mst(*w_bias, += ,_Mpt(K, 3,0, 3,4) $ e));
     // x += K(z - h(x))
 
     _Mvl9(_Mst(P, -= ,K $ HP));
-    _Mvl9(_Mst(*q_noise, = 0.5*,_Mpt(P, 0,0, 3,3), + 0.5*,_Mpt(P, 0,0, 3,3) $T$));
-    _Mvl9(_Mst(*w_bias_noise, = 0.5*,_Mpt(P, 6,6, 3,3), + 0.5*,_Mpt(P, 6,6, 3,3) $T$));
+    _Mvl9(_Mst(*q_and_w_bias_noise, = 0.5*,_Mpt(P, 0,0, 6,6), + 0.5*,_Mpt(P, 0,0, 6,6) $T$));
     // P -= KHP
 
     real q2[1][1];
     _Mvl3(_Mst(q2, = ,*q T$ *q));
-    real inv_q2 = 1 / q2[0][0], inv_q = sqrt(inv_q2);
+    real inv_q = sqrt(1 / q2[0][0]);
     _Mvl3(_Mst(*q, = inv_q*,*q));
-    _Mvl3(_Mst(*q_noise, = inv_q2*,*q_noise));
+    #define mul(x) x *= inv_q
+    _Mvl3(_Mcl(mul, _Mpt(*q_and_w_bias_noise, 0,0, 3,6)));
+    _Mvl3(_Mcl(mul, _Mpt(*q_and_w_bias_noise, 0,0, 6,3)));
 }
