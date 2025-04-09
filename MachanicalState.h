@@ -24,8 +24,11 @@ typedef struct {
 	real v_noise[2][2];
 } MachanicalState;
 
-void MachanicalState_JustifyG(real dt, MachanicalState *mach,
-                              const real (*g)[3], const real (*g_noise)[3][3],
-                              real (*g_true)[3], real (*g_true_noise)[3][3], real (*w_direction)[3]);
+void MachanicalState_Resolve(MachanicalState *mach,
+                             const real (*g)[3], const real (*g_noise)[3][3],
+                             real (*g_true)[3], real *w_mach,
+							 real (*g_true_and_w_mach_noise)[4][4],
+						  	 real (*w_mach_direction)[3], real (*w_mach_direction_noise)[3][3],
+							 real dt);
 
 #endif

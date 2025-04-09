@@ -40,12 +40,12 @@ static void make_G(real coe, real q[4], real (*G)[3][3])
     })));
 }
 
-void Pose_Update(real (*q_)[4],
-                 real (*w_bias_)[3], const real (*w_bias_progress_noise)[3][3],
+void Pose_Update(real (*q_)[4], real (*w_bias_)[3], const real (*w_bias_progress_noise)[3][3],
                  real (*q_and_w_bias_noise)[6][6],
-                 const real (*g_)[3], const real (*g_noise)[3][3],
                  const real (*w_)[3], const real (*w_noise)[3][3],
-                 real directed_w, real directed_w_noise, const real (*direction_)[3],
+                 const real (*direction_)[3], const real (*direction_noise)[3][3],
+                 const real (*g_)[3], real directed_w,
+                 const real (*g_and_directed_w_noise)[4][4],
                  real dt)
 {
     real (*q)[4][1] = (typeof(q))q_;
@@ -66,16 +66,17 @@ void Pose_Update(real (*q_)[4],
     real O[3][3];
     make_O(half_dt, *q_, &O);
     
-    real F[9][9] = {};
+    real F[12][12] = {};
     _Mvl3(_Mgr(F, +1));
     _Mvl3(_Mst(_Mpt(F, 0,0, 3,3), += ,_Mpt(omg, 0,0, 3,3)));
     _Mvl3(_Mst(_Mpt(F, 0,3, 3,3), -= ,O));
     _Mvl3(_Mst(_Mpt(F, 0,6, 3,3), += ,O));
     // F
     
-    real P[9][9] = {};
+    real P[12][12] = {};
     _Mvl3(_Mst(_Mpt(P, 0,0, 6,6), = ,*q_and_w_bias_noise));
     _Mvl3(_Mst(_Mpt(P, 6,6, 3,3), = ,*w_noise));
+    _Mvl3(_Mst(_Mpt(P, 9,9, 3,3), = ,*direction_noise));
     // P
 
     _Mvl9(_Mst(P, = ,F $ _Mgt(P $T F)));
@@ -101,22 +102,18 @@ void Pose_Update(real (*q_)[4],
     real G[3][3];
     make_G(2, *q_, &G);
     
-    real H[4][9] = {};
+    real H[4][12] = {};
     _Mvl3(_Mst(_Mpt(H, 0,0, 3,3), = ,G));
     _Mvl3(_Mst(_Mpt(H, 3,3, 1,3), = -,*direction $T$));
     _Mvl3(_Mst(_Mpt(H, 3,6, 1,3), = ,*direction $T$));
+    _Mvl3(_Mst(_Mpt(H, 3,9, 1,3), = ,unbiased_w $T$));
     // H
 
-    real R[4][4] = {};
-    _Mvl3(_Mst(_Mpt(R, 0,0, 3,3), = inv_g2*,*g_noise));
-    R[3][3] = directed_w_noise;
-    // R
-
-    real HP[4][9];
+    real HP[4][12];
     _Mvl3(_Mst(HP, = ,H $ P));
     
-    real K[9][4];
-    _Mvl9(_Mdv(_Mst(K, = ,HP $T$) $I _Mgt(HP $T H, + ,R)));
+    real K[12][4];
+    _Mvl9(_Mdv(_Mst(K, = ,HP $T$) $I _Mgt(HP $T H, + ,*g_and_directed_w_noise)));
     // K = PH^T / (HPH^T + R) = (HP)^T / (HPH^T + R)
 
     _Mvl3(_Mst(_Mpt(*q, 0,0, 3,1), += ,_Mpt(K, 0,0, 3,4) $ e));
